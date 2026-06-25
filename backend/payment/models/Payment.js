@@ -16,12 +16,18 @@ const Payment = sequelize.define("Payment", {
     allowNull: false,
   },
   method: {
-    type: DataTypes.STRING,
+    type: DataTypes.ENUM("bank_transfer", "ewallet", "cod", "credit_card"),
+    allowNull: false,
   },
   status: {
-    type: DataTypes.STRING,
+    type: DataTypes.ENUM("pending", "paid", "failed", "expired", "refunded"),
     defaultValue: "pending",
   },
+  paidAt: {
+    type: DataTypes.DATE,
+  },
+}, {
+  tableName: "payments",
 });
 
 module.exports = Payment;

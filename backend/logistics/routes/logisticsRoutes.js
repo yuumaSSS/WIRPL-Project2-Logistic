@@ -4,6 +4,7 @@ const logisticsController = require("../controllers/logisticsController");
 
 router.post("/", logisticsController.create);
 router.get("/track/:resi", logisticsController.trackByResi);
+router.get("/order/:orderId", logisticsController.getByOrderId);
 router.patch("/:id/status", logisticsController.updateStatus);
 
 module.exports = router;

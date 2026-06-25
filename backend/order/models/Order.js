@@ -11,14 +11,25 @@ const Order = sequelize.define("Order", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  items: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: [],
+  },
+  shippingAddress: {
+    type: DataTypes.JSON,
+    allowNull: false,
+  },
   totalPrice: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
   },
   status: {
-    type: DataTypes.STRING,
+    type: DataTypes.ENUM("pending", "waiting_payment", "paid", "processing", "shipped", "completed", "cancelled"),
     defaultValue: "pending",
   },
+}, {
+  tableName: "orders",
 });
 
 module.exports = Order;

@@ -7,13 +7,26 @@ const app = express();
 const PORT = process.env.PORT || 8004;
 
 app.use(express.json());
+
+app.get("/health", (req, res) => {
+  res.json({ service: "order", status: "ok" });
+});
+
 app.use("/", orderRoutes);
 
-sequelize
-  .sync()
-  .then(() => console.log("Order DB connected"))
-  .catch((err) => console.error("DB connection error:", err));
+const startServer = async () => {
+  try {
+    await sequelize.authenticate();
+    await sequelize.sync();
+    console.log("Order DB connected");
 
-app.listen(PORT, () => {
-  console.log(`Order service running on port ${PORT}`);
-});
+    app.listen(PORT, () => {
+      console.log(`Order service running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("DB connection error:", error);
+    process.exit(1);
+  }
+};
+
+startServer();

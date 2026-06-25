@@ -13,15 +13,46 @@ const Shipment = sequelize.define("Shipment", {
   },
   resi: {
     type: DataTypes.STRING,
+    allowNull: false,
     unique: true,
   },
-  status: {
+  recipientName: {
     type: DataTypes.STRING,
+    allowNull: false,
+  },
+  phone: {
+    type: DataTypes.STRING,
+  },
+  address: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
+  courier: {
+    type: DataTypes.STRING,
+    defaultValue: "WIRPL Express",
+  },
+  service: {
+    type: DataTypes.STRING,
+    defaultValue: "regular",
+  },
+  status: {
+    type: DataTypes.ENUM("processing", "picked_up", "in_transit", "delivered", "returned", "cancelled"),
     defaultValue: "processing",
   },
   estimasi: {
     type: DataTypes.DATE,
   },
+  shippedAt: {
+    type: DataTypes.DATE,
+  },
+  deliveredAt: {
+    type: DataTypes.DATE,
+  },
+  notes: {
+    type: DataTypes.TEXT,
+  },
+}, {
+  tableName: "shipments",
 });
 
 module.exports = Shipment;
