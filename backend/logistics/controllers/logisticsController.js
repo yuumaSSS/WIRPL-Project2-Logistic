@@ -2,6 +2,7 @@ const Shipment = require("../models/Shipment");
 const TrackingLog = require("../models/TrackingLog");
 const WebhookSubscriber = require("../models/WebhookSubscriber");
 const { notifySubscribers } = require("../services/webhookService");
+const { Op } = require("sequelize");
 const crypto = require("crypto");
 
 // ─── Konstanta ────────────────────────────────────────────────────────────────
@@ -15,7 +16,6 @@ const SHIPMENT_STATUSES = [
   "cancelled",
 ];
 
-// Deskripsi default per status (bisa di-override lewat body.description)
 const STATUS_DESCRIPTIONS = {
   processing: "Pesanan sedang diproses oleh logistik",
   picked_up: "Paket telah diambil oleh kurir",
@@ -56,6 +56,63 @@ const findShipment = async (id, res) => {
 // ─── Shipment Endpoints ───────────────────────────────────────────────────────
 
 /**
+ * GET /stats
+ * Ringkasan jumlah shipment per status — dipakai dashboard frontend.
+ * Response: { total, active, delivered, failed }
+ */
+exports.getStats = async (req, res) => {
+  try {
+    const [total, delivered, failed] = await Promise.all([
+      Shipment.count(),
+      Shipment.count({ where: { status: "delivered" } }),
+      Shipment.count({ where: { status: { [Op.in]: ["returned", "cancelled"] } } }),
+    ]);
+
+    // "active" = semua yang belum selesai (bukan delivered/returned/cancelled)
+    const active = total - delivered - failed;
+
+    return res.json({ data: { total, active, delivered, failed } });
+  } catch (error) {
+    return sendServerError(res, error);
+  }
+};
+
+/**
+ * GET /
+ * List semua shipment. Support query params:
+ *   ?limit=4          → batasi jumlah hasil (default semua)
+ *   ?sort=createdAt:desc  → urutan (default createdAt DESC)
+ * Dipakai dashboard frontend untuk menampilkan pengiriman terbaru.
+ */
+exports.getAll = async (req, res) => {
+  try {
+    const { limit, sort } = req.query;
+
+    // Parse sort: "createdAt:desc" → [["createdAt", "DESC"]]
+    let order = [["createdAt", "DESC"]];
+    if (sort) {
+      const [field, direction] = sort.split(":");
+      const allowedFields = ["createdAt", "updatedAt", "status", "resi"];
+      const allowedDirs   = ["asc", "desc"];
+      if (allowedFields.includes(field) && allowedDirs.includes(direction?.toLowerCase())) {
+        order = [[field, direction.toUpperCase()]];
+      }
+    }
+
+    const options = { order };
+    if (limit) {
+      const parsed = parseInt(limit, 10);
+      if (!isNaN(parsed) && parsed > 0) options.limit = parsed;
+    }
+
+    const shipments = await Shipment.findAll(options);
+    return res.json({ data: shipments });
+  } catch (error) {
+    return sendServerError(res, error);
+  }
+};
+
+/**
  * POST /
  * Buat pengiriman baru dari order e-commerce.
  * Dilindungi oleh verifyApiKey middleware.
@@ -92,7 +149,6 @@ exports.create = async (req, res) => {
       notes,
     });
 
-    // Catat log awal pembuatan shipment
     await TrackingLog.create({
       shipmentId: shipment.id,
       resi: shipment.resi,
@@ -113,13 +169,11 @@ exports.create = async (req, res) => {
 /**
  * GET /track/:resi
  * Cek status terkini pengiriman berdasarkan nomor resi.
- * Endpoint publik (bisa dipakai e-commerce / pelanggan).
  */
 exports.trackByResi = async (req, res) => {
   try {
     const shipment = await Shipment.findOne({ where: { resi: req.params.resi } });
     if (!shipment) return res.status(404).json({ message: "Shipment not found" });
-
     return res.json({ data: shipment });
   } catch (error) {
     return sendServerError(res, error);
@@ -140,12 +194,7 @@ exports.trackHistoryByResi = async (req, res) => {
       order: [["changedAt", "ASC"]],
     });
 
-    return res.json({
-      data: {
-        shipment,
-        history: logs,
-      },
-    });
+    return res.json({ data: { shipment, history: logs } });
   } catch (error) {
     return sendServerError(res, error);
   }
@@ -169,10 +218,7 @@ exports.getByOrderId = async (req, res) => {
 
 /**
  * PATCH /:id/status
- * Update status pengiriman.
- * Setiap update akan:
- *  1. Simpan log baru ke TrackingLog
- *  2. Kirim notifikasi webhook ke semua mitra e-commerce aktif
+ * Update status pengiriman + catat log + kirim webhook.
  */
 exports.updateStatus = async (req, res) => {
   try {
@@ -188,7 +234,6 @@ exports.updateStatus = async (req, res) => {
     const shipment = await findShipment(req.params.id, res);
     if (!shipment) return null;
 
-    // Update field shipment
     shipment.status = status;
     if (description !== undefined) shipment.notes = description;
     if (status === "picked_up" || status === "in_transit") {
@@ -199,7 +244,6 @@ exports.updateStatus = async (req, res) => {
     }
     await shipment.save();
 
-    // 1. Catat ke TrackingLog
     await TrackingLog.create({
       shipmentId: shipment.id,
       resi: shipment.resi,
@@ -208,7 +252,6 @@ exports.updateStatus = async (req, res) => {
       changedAt: new Date(),
     });
 
-    // 2. Kirim webhook (fire-and-forget, tidak blokir response)
     notifySubscribers(shipment);
 
     return res.json({ message: "Shipment status updated", data: shipment });
@@ -221,8 +264,6 @@ exports.updateStatus = async (req, res) => {
 
 /**
  * POST /webhooks/register
- * Daftarkan mitra e-commerce baru sebagai subscriber webhook.
- * Generate API key otomatis untuk mitra tersebut.
  */
 exports.registerWebhook = async (req, res) => {
   try {
@@ -231,21 +272,13 @@ exports.registerWebhook = async (req, res) => {
     if (!companyName) return res.status(400).json({ message: "companyName is required" });
     if (!callbackUrl) return res.status(400).json({ message: "callbackUrl is required" });
 
-    // Validasi format URL sederhana
-    try {
-      new URL(callbackUrl);
-    } catch {
+    try { new URL(callbackUrl); } catch {
       return res.status(400).json({ message: "callbackUrl must be a valid URL" });
     }
 
-    // Generate API key unik (32 byte hex = 64 karakter)
     const apiKey = crypto.randomBytes(32).toString("hex");
-
     const subscriber = await WebhookSubscriber.create({
-      companyName,
-      callbackUrl,
-      apiKey,
-      isActive: true,
+      companyName, callbackUrl, apiKey, isActive: true,
     });
 
     return res.status(201).json({
@@ -254,7 +287,7 @@ exports.registerWebhook = async (req, res) => {
         id: subscriber.id,
         companyName: subscriber.companyName,
         callbackUrl: subscriber.callbackUrl,
-        apiKey: subscriber.apiKey, // tampilkan sekali saat register
+        apiKey: subscriber.apiKey,
         isActive: subscriber.isActive,
       },
     });
@@ -268,7 +301,6 @@ exports.registerWebhook = async (req, res) => {
 
 /**
  * GET /webhooks
- * Daftar semua subscriber webhook (tanpa menampilkan apiKey penuh).
  */
 exports.listWebhooks = async (req, res) => {
   try {
@@ -284,7 +316,6 @@ exports.listWebhooks = async (req, res) => {
 
 /**
  * PATCH /webhooks/:id/toggle
- * Aktifkan / nonaktifkan subscriber webhook.
  */
 exports.toggleWebhook = async (req, res) => {
   try {

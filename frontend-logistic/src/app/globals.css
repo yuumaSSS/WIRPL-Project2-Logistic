@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cream-50:  #FDFAF6;
+  --cream-100: #F5EFE6;
+  --cream-200: #EDE0D4;
+  --brown-100: #C9A87C;
+  --brown-300: #8B5E3C;
+  --brown-500: #4A2C1A;
+  --brown-600: #3D2B1F;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  background-color: #F5EFE6;
+  color: #3D2B1F;
+  font-family: var(--font-montserrat), 'Montserrat', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #EDE0D4; }
+::-webkit-scrollbar-thumb { background: #C9A87C; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8B5E3C; }
+
+@layer components {
+  .font-display {
+    font-family: var(--font-montserrat), 'Montserrat', sans-serif;
+    font-weight: 700;
+  }
+  .card-luxury {
+    @apply bg-cream-50 rounded-2xl border border-cream-200;
+    box-shadow: 0 4px 24px rgba(61,43,31,0.08);
+  }
+  .shadow-luxury {
+    box-shadow: 0 4px 24px rgba(61,43,31,0.08);
+  }
+  .shadow-luxury-hover {
+    box-shadow: 0 8px 32px rgba(61,43,31,0.14);
+  }
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-widest text-brown-200;
+  }
+}

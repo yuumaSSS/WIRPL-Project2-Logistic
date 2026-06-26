@@ -5,7 +5,13 @@ const ctrl = require("../controllers/logisticsController");
 
 // ─── Shipment Routes ──────────────────────────────────────────────────────────
 
-// POST /          → buat pengiriman baru (wajib sertakan x-api-key di header)
+// GET /stats → ringkasan jumlah shipment per status (untuk dashboard)
+router.get("/stats", ctrl.getStats);
+
+// GET / → list semua shipment, support ?limit=&sort=createdAt:desc (untuk dashboard)
+router.get("/", ctrl.getAll);
+
+// POST / → buat pengiriman baru (wajib sertakan x-api-key di header)
 router.post("/", verifyApiKey, ctrl.create);
 
 // GET /track/:resi         → cek status terkini berdasarkan nomor resi (publik)
